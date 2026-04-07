@@ -5,6 +5,7 @@ EPIC DUAL BOMBER – Webhook Version (GOD LEVEL VIP UI)
 - Full Uncut Version: Admin Panel, Background Webhook, ALL Commands
 - Blockquotes, Box Drawing (├, └, ━), Monospace styling
 - Updated Pricing, Enhanced Help Menu, VIP Protection Alerts & Admin Help
+- Added /unprotect and /plist commands for Admins
 """
 
 import os
@@ -533,7 +534,6 @@ async def buy_command(update, context):
     else: await update.message.reply_text(text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def process_buy_plan(query, user_id, plan_key, context):
-    # PRICING UPDATED HERE
     plans = {'100': (79,100), '500': (249,500), '1000': (599,1000), 'lifetime': (949,0)}
     amount, credits = plans[plan_key]
     qr_img, upi_url = generate_upi_qr(UPI_ID, "EpicBomber", amount, f"Credits:{credits}")
@@ -632,9 +632,8 @@ async def referral_command(update, context):
     else:
         await update.message.reply_text(msg, parse_mode='HTML')
 
-# ================= SECRET UNPROTECT COMMAND =================
+# ================= SECRET ADMIN COMMANDS =================
 async def unprotect_command(update, context):
-    # Sirf Admin use kar sakta hai
     if update.effective_user.id not in ADMIN_IDS: return
         
     if not context.args or len(context.args) != 1:
@@ -648,6 +647,22 @@ async def unprotect_command(update, context):
     else:
         await update.message.reply_text(f"❌ <b>ERROR:</b> Number <code>{target_num}</code> is not in the protected list.", parse_mode='HTML')
 
+async def protected_list_command(update, context):
+    if update.effective_user.id not in ADMIN_IDS: return
+    
+    protected_nums = list(protected.find({"paid_until": {"$gt": datetime.now()}}))
+    
+    if not protected_nums:
+        return await update.message.reply_text("🛡️ <b>VIP SHIELD LIST</b>\n━━━━━━━━━━━━━━━━━━━━\n<blockquote>No numbers are currently protected.</blockquote>", parse_mode='HTML')
+        
+    msg = "🛡️ <b>VIP SHIELD ACTIVE NUMBERS</b>\n━━━━━━━━━━━━━━━━━━━━\n"
+    for idx, entry in enumerate(protected_nums, 1):
+        num = entry.get('number', 'Unknown')
+        owner = entry.get('owner_id', 'Admin')
+        msg += f"├ <b>{idx}.</b> <code>{num}</code>\n"
+        msg += f"└ Protected by ID: <code>{owner}</code>\n\n"
+        
+    await update.message.reply_text(msg, parse_mode='HTML')
 
 # ================= ADMIN LOGIC =================
 async def admin_panel(update, context):
@@ -655,7 +670,6 @@ async def admin_panel(update, context):
     query = update.callback_query
     await query.answer()
     
-    # NEW ADMIN HELP BUTTON ADDED HERE
     keyboard = [
         [InlineKeyboardButton("📊 Stats", callback_data='admin_stats'), InlineKeyboardButton("➕ Add Credits", callback_data='admin_add')],
         [InlineKeyboardButton("🚫 Ban User", callback_data='admin_ban'), InlineKeyboardButton("✅ Unban", callback_data='admin_unban')],
@@ -678,8 +692,8 @@ async def admin_help_cmd(update, context):
         "├ <b>Verify Txn:</b> Approve manual payments (Needs User ID & TXID).\n"
         "└ <b>Export Logs:</b> Download a CSV of all attacks.\n\n"
         "💻 <b>Secret Chat Commands:</b>\n"
-        "└ <code>/unprotect [number]</code> - Instantly removes a number from the VIP Shield so it can be attacked again.\n"
-        "<i>Example:</i> <code>/unprotect 9876543210</code>"
+        "├ <code>/unprotect [number]</code> - Removes a number from Shield.\n"
+        "└ <code>/plist</code> - View all currently protected numbers.\n"
     )
     await update.callback_query.edit_message_text(msg, parse_mode='HTML', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Admin Panel", callback_data='admin')]]))
 
@@ -926,6 +940,7 @@ if __name__ == "__main__":
     
     telegram_app = Application.builder().token(BOT_TOKEN).build()
     
+    # ALL COMMANDS REGISTERED HERE (INCLUDING /unprotect & /plist)
     telegram_app.add_handler(CommandHandler("start", start))
     telegram_app.add_handler(CommandHandler("help", help_command))
     telegram_app.add_handler(CommandHandler("stop", stop_command))
@@ -934,7 +949,8 @@ if __name__ == "__main__":
     telegram_app.add_handler(CommandHandler("buy", buy_command))
     telegram_app.add_handler(CommandHandler("protect", protect_command))
     telegram_app.add_handler(CommandHandler("referral", referral_command))
-    telegram_app.add_handler(CommandHandler("unprotect", unprotect_command))  # ADDED HERE
+    telegram_app.add_handler(CommandHandler("unprotect", unprotect_command)) 
+    telegram_app.add_handler(CommandHandler("plist", protected_list_command)) 
     
     telegram_app.add_handler(CallbackQueryHandler(button_callback))
     telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
