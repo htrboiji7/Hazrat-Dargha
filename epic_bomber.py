@@ -4,7 +4,7 @@ EPIC DUAL BOMBER – Webhook Version (GOD LEVEL VIP UI)
 ----------------------------------------------------------------
 - Full Uncut Version: Admin Panel, Background Webhook, ALL Commands
 - Blockquotes, Box Drawing (├, └, ━), Monospace styling
-- Updated Pricing, Enhanced Help Menu & VIP Protection Alerts
+- Updated Pricing, Enhanced Help Menu, VIP Protection Alerts & Admin Help
 """
 
 import os
@@ -587,7 +587,7 @@ async def auto_protect_callback(update, context):
         protect_number(phone, user_id, 30)
         await query.edit_message_text(f"✅ <b>SUCCESS:</b> <code>{phone}</code> is protected for 30 days!", parse_mode='HTML')
 
-# FULL HELP AND GUIDE MENU ADDED
+# FULL HELP AND GUIDE MENU
 async def help_command(update, context):
     msg = (
         "ℹ️ <b>SUPPORT & USAGE GUIDE</b>\n"
@@ -632,19 +632,56 @@ async def referral_command(update, context):
     else:
         await update.message.reply_text(msg, parse_mode='HTML')
 
+# ================= SECRET UNPROTECT COMMAND =================
+async def unprotect_command(update, context):
+    # Sirf Admin use kar sakta hai
+    if update.effective_user.id not in ADMIN_IDS: return
+        
+    if not context.args or len(context.args) != 1:
+        return await update.message.reply_text("⚠️ <b>USAGE:</b> <code>/unprotect 9876543210</code>", parse_mode='HTML')
+        
+    target_num = context.args[0]
+    result = protected.delete_one({"number": target_num})
+    
+    if result.deleted_count > 0:
+        await update.message.reply_text(f"✅ <b>TARGET UNLOCKED:</b>\nNumber <code>{target_num}</code> is removed from the VIP Shield. It can now be bombed.", parse_mode='HTML')
+    else:
+        await update.message.reply_text(f"❌ <b>ERROR:</b> Number <code>{target_num}</code> is not in the protected list.", parse_mode='HTML')
+
+
 # ================= ADMIN LOGIC =================
 async def admin_panel(update, context):
     if update.effective_user.id not in ADMIN_IDS: return
     query = update.callback_query
     await query.answer()
+    
+    # NEW ADMIN HELP BUTTON ADDED HERE
     keyboard = [
         [InlineKeyboardButton("📊 Stats", callback_data='admin_stats'), InlineKeyboardButton("➕ Add Credits", callback_data='admin_add')],
         [InlineKeyboardButton("🚫 Ban User", callback_data='admin_ban'), InlineKeyboardButton("✅ Unban", callback_data='admin_unban')],
         [InlineKeyboardButton("📢 Broadcast", callback_data='admin_broadcast'), InlineKeyboardButton("🔘 Verify Txn", callback_data='admin_verify')],
-        [InlineKeyboardButton("📄 Export Logs", callback_data='admin_export')],
+        [InlineKeyboardButton("📄 Export Logs", callback_data='admin_export'), InlineKeyboardButton("ℹ️ Admin Help", callback_data='admin_help')],
         [InlineKeyboardButton("🔙 Exit Panel", callback_data='start')]
     ]
     await query.edit_message_text("⚙️ <b>ROOT ACCESS TERMINAL</b>\n━━━━━━━━━━━━━━━━━━━━", parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def admin_help_cmd(update, context):
+    if update.effective_user.id not in ADMIN_IDS: return
+    msg = (
+        "👑 <b>ADMIN COMMANDS & USAGE</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "<blockquote>Here is the master guide for root admins:</blockquote>\n\n"
+        "🔘 <b>Panel Buttons:</b>\n"
+        "├ <b>Add Credits:</b> Gives VIP credits to a user ID.\n"
+        "├ <b>Ban/Unban:</b> Block/Unblock users.\n"
+        "├ <b>Broadcast:</b> Send a message to ALL users.\n"
+        "├ <b>Verify Txn:</b> Approve manual payments (Needs User ID & TXID).\n"
+        "└ <b>Export Logs:</b> Download a CSV of all attacks.\n\n"
+        "💻 <b>Secret Chat Commands:</b>\n"
+        "└ <code>/unprotect [number]</code> - Instantly removes a number from the VIP Shield so it can be attacked again.\n"
+        "<i>Example:</i> <code>/unprotect 9876543210</code>"
+    )
+    await update.callback_query.edit_message_text(msg, parse_mode='HTML', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Admin Panel", callback_data='admin')]]))
 
 async def admin_stats_cmd(update, context):
     if update.effective_user.id not in ADMIN_IDS: return
@@ -800,6 +837,7 @@ async def button_callback(update, context):
     
     # Admin Callbacks
     elif data == 'admin' and update.effective_user.id in ADMIN_IDS: await admin_panel(update, context)
+    elif data == 'admin_help' and update.effective_user.id in ADMIN_IDS: await admin_help_cmd(update, context)
     elif data == 'admin_stats' and update.effective_user.id in ADMIN_IDS: await admin_stats_cmd(update, context)
     elif data == 'admin_add' and update.effective_user.id in ADMIN_IDS: await admin_add_credits(update, context)
     elif data == 'admin_ban' and update.effective_user.id in ADMIN_IDS: await admin_ban(update, context)
@@ -896,6 +934,7 @@ if __name__ == "__main__":
     telegram_app.add_handler(CommandHandler("buy", buy_command))
     telegram_app.add_handler(CommandHandler("protect", protect_command))
     telegram_app.add_handler(CommandHandler("referral", referral_command))
+    telegram_app.add_handler(CommandHandler("unprotect", unprotect_command))  # ADDED HERE
     
     telegram_app.add_handler(CallbackQueryHandler(button_callback))
     telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
