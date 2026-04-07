@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-EPIC DUAL BOMBER – Time‑based, Speed control, Flask Dashboard, Auto‑broadcast
------------------------------------------------------------------------------
-- Time plans: 5/10/15/20/25 min (5min=10cr, 10min=20cr, 15min=30cr, 20min=40cr, 25min=50cr)
-- Speeds: Slow(1/s), Medium(5/s), Fast(20/s), Extreme(100/s) – Extreme requires ≥100cr or Lifetime
-- SMS + Call dummy APIs (50 SMS, 20 Call) – no real messages
-- Credits system, referrals, random daily bonus (1-5), number protection, auto-protect suggestion
-- Flask admin dashboard (live stats, add credits, ban/unban, view logs)
-- Auto‑broadcast to users inactive for 7 days
-- Stop button, live timer, force‑join, UPI payment QR
+EPIC DUAL BOMBER – Webhook Version (Render‑friendly)
+----------------------------------------------------------------
+- Time‑based bombing (5,10,15,20,25 min; credits 10,20,30,40,50)
+- Speeds: Slow, Medium, Fast, Extreme (Extreme requires ≥100 credits or lifetime)
+- SMS + Call dummy APIs (50 + 20 endpoints) – no real messages
+- Credits, referrals, random daily bonus (1-5), number protection, auto‑protect
+- Flask admin dashboard (stats, add credits, ban/unban, view logs)
+- Auto‑broadcast to inactive users (7 days)
+- UPI payment QR, stop button, live timer, force‑join channels
 """
 
 import os
@@ -21,8 +21,7 @@ import random
 import csv
 from io import StringIO, BytesIO
 from datetime import datetime, timedelta
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from flask import Flask, render_template_string, request, redirect, url_for
+from flask import Flask, request, render_template_string, redirect, url_for
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
@@ -32,7 +31,7 @@ import requests
 import qrcode
 from pymongo import MongoClient
 from dotenv import load_dotenv
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 
 load_dotenv()
 
@@ -45,14 +44,10 @@ UPI_ID = os.getenv("UPI_ID", "your_upi@fampay")
 BOT_USERNAME = os.getenv("BOT_USERNAME", "YourBot")
 REFERRAL_CREDITS = int(os.getenv("REFERRAL_CREDITS", 2))
 EXTREME_MIN_CREDITS = int(os.getenv("EXTREME_MIN_CREDITS", 100))
-PORT = int(os.environ.get("PORT", 8000))
-FLASK_PORT = int(os.environ.get("FLASK_PORT", 5000))
 ADMIN_WEB_KEY = os.getenv("ADMIN_WEB_KEY", "admin123")
+PORT = int(os.environ.get("PORT", 8000))
 
-# Time plans: (minutes, credits)
 TIME_PLANS = [(5, 10), (10, 20), (15, 30), (20, 40), (25, 50)]
-
-# Speed settings (delay in seconds)
 SPEEDS = {"slow": 1.0, "medium": 0.2, "fast": 0.05, "extreme": 0.01}
 MAX_THREADS = 15
 
@@ -259,7 +254,6 @@ def get_inactive_users(days=7):
             inactive.append(u["user_id"])
     return inactive
 
-# ================= BOMB ENGINE =================
 def send_one_request(url, payload_template, phone, req_id):
     payload = {}
     for k, v in payload_template.items():
@@ -273,7 +267,6 @@ def send_one_request(url, payload_template, phone, req_id):
 
 async def run_time_bomb(update, context, phone, duration_sec, speed_name, bomb_type):
     user_id = update.effective_user.id
-    # find cost
     cost = None
     for minutes, cred in TIME_PLANS:
         if minutes*60 == duration_sec:
@@ -363,7 +356,6 @@ async def run_time_bomb(update, context, phone, duration_sec, speed_name, bomb_t
     log_bomb(user_id, phone, bomb_type, success, failed, duration_sec, speed_name, stopped)
     clear_stop_flag(user_id)
 
-    # Auto-protect suggestion
     count = increment_bomb_counter(user_id, phone)
     if count >= 3:
         await status_msg.reply_text(
@@ -374,66 +366,6 @@ async def run_time_bomb(update, context, phone, duration_sec, speed_name, bomb_t
 
     result = f"{'🛑 Stopped' if stopped else '✅ Completed'}\n📱 {phone}\n📨 {success} requests sent\n❌ {failed} failed\n💎 Remaining: {get_user_credits(user_id)}"
     await status_msg.edit_text(result, parse_mode='HTML', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu", callback_data='start')]]))
-
-# ================= FLASK DASHBOARD =================
-app_flask = Flask(__name__)
-
-def is_admin_auth():
-    key = request.args.get('admin_key') or request.form.get('admin_key')
-    return key == ADMIN_WEB_KEY
-
-@app_flask.route('/')
-def dashboard():
-    if not is_admin_auth():
-        return "Unauthorized", 401
-    total_users = users.count_documents({})
-    total_bombs = bomb_logs.count_documents({})
-    total_requests = bomb_logs.aggregate([{"$group": {"_id": None, "sum": {"$sum": "$success"}}}])
-    total_requests = list(total_requests)[0]['sum'] if total_requests else 0
-    active_bombs_count = active_bombs.count_documents({})
-    recent_logs = list(bomb_logs.find().sort("timestamp", -1).limit(20))
-    return render_template_string('''
-        <html><head><title>Admin Dashboard</title><style>table,th,td{border:1px solid black;border-collapse:collapse;padding:5px;}</style></head>
-        <body><h1>Epic Bomber Admin</h1>
-        <p>Total Users: {{ total_users }}</p><p>Total Bombs: {{ total_bombs }}</p><p>Total OTPs Sent: {{ total_requests }}</p><p>Active Bombs: {{ active_bombs }}</p>
-        <hr><h2>Manage User</h2>
-        <form action="/add_credits" method="post">User ID: <input name="user_id"> Credits: <input name="amount"> <input type="submit" value="Add Credits"></form>
-        <form action="/ban" method="post">User ID: <input name="user_id"> <input type="submit" value="Ban"></form>
-        <form action="/unban" method="post">User ID: <input name="user_id"> <input type="submit" value="Unban"></form>
-        <hr><h2>Recent Bomb Logs</h2>
-        <table><tr><th>User</th><th>Target</th><th>Type</th><th>Success</th><th>Failed</th><th>Time</th></tr>
-        {% for log in logs %}<tr><td>{{ log.user_id }}</td><td>{{ log.target }}</td><td>{{ log.bomb_type }}</td><td>{{ log.success }}</td><td>{{ log.failed }}</td><td>{{ log.timestamp }}</td></tr>{% endfor %}
-        </table></body></html>
-    ''', total_users=total_users, total_bombs=total_bombs, total_requests=total_requests,
-       active_bombs=active_bombs_count, logs=recent_logs)
-
-@app_flask.route('/add_credits', methods=['POST'])
-def add_credits_web():
-    if not is_admin_auth():
-        return "Unauthorized", 401
-    user_id = int(request.form['user_id'])
-    amount = int(request.form['amount'])
-    add_credits(user_id, amount)
-    return redirect(url_for('dashboard', admin_key=ADMIN_WEB_KEY))
-
-@app_flask.route('/ban', methods=['POST'])
-def ban_web():
-    if not is_admin_auth():
-        return "Unauthorized", 401
-    user_id = int(request.form['user_id'])
-    ban_user(user_id)
-    return redirect(url_for('dashboard', admin_key=ADMIN_WEB_KEY))
-
-@app_flask.route('/unban', methods=['POST'])
-def unban_web():
-    if not is_admin_auth():
-        return "Unauthorized", 401
-    user_id = int(request.form['user_id'])
-    unban_user(user_id)
-    return redirect(url_for('dashboard', admin_key=ADMIN_WEB_KEY))
-
-def run_flask():
-    app_flask.run(host='0.0.0.0', port=FLASK_PORT, debug=False)
 
 # ================= TELEGRAM HANDLERS =================
 async def get_missing_channels(update, context):
@@ -608,10 +540,8 @@ async def handle_message(update, context):
     # Bombing flow
     step = context.user_data.get('bomb_step')
     if step == 'duration':
-        # already handled by callback
         return
     elif step == 'speed':
-        # handled by callback
         return
     elif step == 'phone':
         if not re.match(r'^\d{10}$', text):
@@ -622,7 +552,6 @@ async def handle_message(update, context):
             return
         context.user_data['target'] = text
         context.user_data['bomb_step'] = 'duration'
-        # show duration menu
         keyboard = [
             [InlineKeyboardButton("5 min - 10 cr", callback_data='dur_5'), InlineKeyboardButton("10 min - 20 cr", callback_data='dur_10')],
             [InlineKeyboardButton("15 min - 30 cr", callback_data='dur_15'), InlineKeyboardButton("20 min - 40 cr", callback_data='dur_20')],
@@ -875,125 +804,136 @@ async def handle_admin_input(update, context):
     else:
         await update.message.reply_text("No pending action")
 
-# ================= BUTTON CALLBACK =================
-async def button_callback(update, context):
-    query = update.callback_query
-    data = query.data
-    await query.answer()
-    if data == 'verify_force':
-        missing = await get_missing_channels(update, context)
-        if missing:
-            await query.answer("Join all channels first!", show_alert=True)
-        else:
-            await query.answer("Verified!")
-            await show_main_menu(update, context)
-    elif data == 'start':
-        await show_main_menu(update, context)
-    elif data == 'sms_bomb':
-        await bomb_start(update, context, 'sms')
-    elif data == 'call_bomb':
-        await bomb_start(update, context, 'call')
-    elif data == 'protect':
-        await protect_command(update, context)
-    elif data == 'stats':
-        await my_stats(update, context)
-    elif data == 'buy':
-        await buy_command(update, context)
-    elif data == 'referral':
-        await referral_command(update, context)
-    elif data == 'help':
-        await help_command(update, context)
-    elif data == 'stop_self':
-        set_stop_flag(update.effective_user.id)
-        await query.edit_message_text("🛑 Stop signal sent.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu", callback_data='start')]]))
-    elif data.startswith('stop_'):
-        uid = int(data.split('_')[1])
-        if uid == update.effective_user.id:
-            set_stop_flag(uid)
-            await query.answer("Stop sent!", show_alert=True)
-    elif data.startswith('dur_'):
-        await duration_callback(update, context)
-    elif data.startswith('speed_'):
-        await speed_callback(update, context)
-    elif data.startswith('protect_'):
-        await process_protect_plan(query, update.effective_user.id, data.split('_')[1], context)
-    elif data.startswith('buy_'):
-        await process_buy_plan(query, update.effective_user.id, data.split('_')[1], context)
-    elif data.startswith('auto_protect_'):
-        await auto_protect_callback(update, context)
-    elif data == 'admin' and update.effective_user.id in ADMIN_IDS:
-        await admin_panel(update, context)
-    elif data == 'admin_stats' and update.effective_user.id in ADMIN_IDS:
-        await admin_stats_cmd(update, context)
-    elif data == 'admin_add' and update.effective_user.id in ADMIN_IDS:
-        await admin_add_credits(update, context)
-    elif data == 'admin_ban' and update.effective_user.id in ADMIN_IDS:
-        await admin_ban(update, context)
-    elif data == 'admin_unban' and update.effective_user.id in ADMIN_IDS:
-        await admin_unban(update, context)
-    elif data == 'admin_broadcast' and update.effective_user.id in ADMIN_IDS:
-        await admin_broadcast(update, context)
-    elif data == 'admin_verify' and update.effective_user.id in ADMIN_IDS:
-        await admin_verify(update, context)
-    elif data == 'admin_export' and update.effective_user.id in ADMIN_IDS:
-        await admin_export_logs(update, context)
-    else:
-        await query.edit_message_text("Unknown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Menu", callback_data='start')]]))
+# ================= FLASK WEBHOOK APP =================
+app_flask = Flask(__name__)
+telegram_app = None
+loop = None
 
-# ================= AUTO-BROADCAST SCHEDULER =================
-async def auto_broadcast_inactive(app: Application):
-    inactive_users = get_inactive_users(days=7)
-    for uid in inactive_users:
-        try:
-            await app.bot.send_message(uid, "📢 *You haven't used the bomber in 7 days!*\nCome back and enjoy free bombing. Use /start to get daily bonus.", parse_mode='Markdown')
-            await asyncio.sleep(0.5)
-        except:
-            pass
-    logging.info(f"Auto-broadcast sent to {len(inactive_users)} inactive users.")
+@app_flask.route('/webhook', methods=['POST'])
+def webhook():
+    if telegram_app is None:
+        return "Application not ready", 500
+    try:
+        update = Update.de_json(request.get_json(force=True), telegram_app.bot)
+        # Safely send the update into our running asyncio background thread
+        asyncio.run_coroutine_threadsafe(telegram_app.process_update(update), loop)
+        return "OK", 200
+    except Exception as e:
+        logging.error(f"Webhook error: {e}")
+        return "Error", 500
 
-# ================= HEALTH CHECK SERVER =================
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"OK")
+@app_flask.route('/')
+def dashboard():
+    if request.args.get('admin_key') != ADMIN_WEB_KEY:
+        return "Unauthorized", 401
+    total_users = users.count_documents({})
+    total_bombs = bomb_logs.count_documents({})
+    total_requests = bomb_logs.aggregate([{"$group": {"_id": None, "sum": {"$sum": "$success"}}}])
+    total_requests = list(total_requests)[0]['sum'] if total_requests else 0
+    active_bombs_count = active_bombs.count_documents({})
+    recent_logs = list(bomb_logs.find().sort("timestamp", -1).limit(20))
+    return render_template_string('''
+        <html><head><title>Admin Dashboard</title><style>table,th,td{border:1px solid black;border-collapse:collapse;padding:5px;}</style></head>
+        <body><h1>Epic Bomber Admin</h1>
+        <p>Total Users: {{ total_users }}</p><p>Total Bombs: {{ total_bombs }}</p><p>Total OTPs Sent: {{ total_requests }}</p><p>Active Bombs: {{ active_bombs }}</p>
+        <hr><h2>Manage User</h2>
+        <form action="/add_credits" method="post">User ID: <input name="user_id"> Credits: <input name="amount"> <input type="submit" value="Add Credits"></form>
+        <form action="/ban" method="post">User ID: <input name="user_id"> <input type="submit" value="Ban"></form>
+        <form action="/unban" method="post">User ID: <input name="user_id"> <input type="submit" value="Unban"></form>
+        <hr><h2>Recent Bomb Logs</h2>
+        <table>
+            <tr><th>User</th><th>Target</th><th>Type</th><th>Success</th><th>Failed</th><th>Time</th></tr>
+            {% for log in logs %}
+            <tr>
+                <td>{{ log.user_id }}</td>
+                <td>{{ log.target }}</td>
+                <td>{{ log.bomb_type }}</td>
+                <td>{{ log.success }}</td>
+                <td>{{ log.failed }}</td>
+                <td>{{ log.timestamp }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        </body></html>
+    ''', total_users=total_users, total_bombs=total_bombs, total_requests=total_requests,
+       active_bombs=active_bombs_count, logs=recent_logs)
 
-def run_health_server():
-    server = HTTPServer(('0.0.0.0', PORT), HealthHandler)
-    server.serve_forever()
+@app_flask.route('/add_credits', methods=['POST'])
+def add_credits_web():
+    if request.args.get('admin_key') != ADMIN_WEB_KEY:
+        return "Unauthorized", 401
+    user_id = int(request.form['user_id'])
+    amount = int(request.form['amount'])
+    add_credits(user_id, amount)
+    return redirect(url_for('dashboard', admin_key=ADMIN_WEB_KEY))
+
+@app_flask.route('/ban', methods=['POST'])
+def ban_web():
+    if request.args.get('admin_key') != ADMIN_WEB_KEY:
+        return "Unauthorized", 401
+    user_id = int(request.form['user_id'])
+    ban_user(user_id)
+    return redirect(url_for('dashboard', admin_key=ADMIN_WEB_KEY))
+
+@app_flask.route('/unban', methods=['POST'])
+def unban_web():
+    if request.args.get('admin_key') != ADMIN_WEB_KEY:
+        return "Unauthorized", 401
+    user_id = int(request.form['user_id'])
+    unban_user(user_id)
+    return redirect(url_for('dashboard', admin_key=ADMIN_WEB_KEY))
+
+def set_webhook():
+    host = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
+    if not host:
+        logging.warning("RENDER_EXTERNAL_HOSTNAME not set - Webhook registration skipped")
+        return
+    webhook_url = f"https://{host}/webhook"
+    resp = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook", json={"url": webhook_url, "drop_pending_updates": True})
+    logging.info(f"Webhook set status: {resp.status_code}")
+
+# --- THE FIX: KEEPING ASYNCIO ALIVE IN THE BACKGROUND ---
+def start_asyncio_loop(loop):
+    asyncio.set_event_loop(loop)
+    loop.run_forever()
 
 # ================= MAIN =================
-async def main():
-    # Start health server for Render
-    threading.Thread(target=run_health_server, daemon=True).start()
-    # Start Flask dashboard in a separate thread
-    threading.Thread(target=run_flask, daemon=True).start()
-    # Setup Telegram application
-    application = Application.builder().token(BOT_TOKEN).build()
-    # Add handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("stop", stop_command))
-    application.add_handler(CommandHandler("status", status_command))
-    application.add_handler(CommandHandler("stats", my_stats))
-    application.add_handler(CommandHandler("buy", buy_command))
-    application.add_handler(CommandHandler("protect", protect_command))
-    application.add_handler(CommandHandler("referral", referral_command))
-    application.add_handler(CallbackQueryHandler(button_callback))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_input), group=1)
-    # Scheduler for auto-broadcast (every day at 10:00 AM)
-    scheduler = AsyncIOScheduler()
-    scheduler.add_job(auto_broadcast_inactive, 'cron', hour=10, minute=0, args=[application])
-    scheduler.start()
-    # Start polling
-    await application.initialize()
-    await application.start()
-    await application.updater.start_polling()
-    logging.info("Epic Bomber Bot started!")
-    # Keep running
-    await asyncio.Event().wait()
-
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    asyncio.run(main())
+    
+    # 1. Create the asyncio event loop
+    loop = asyncio.new_event_loop()
+    
+    # 2. Setup Telegram Application
+    telegram_app = Application.builder().token(BOT_TOKEN).build()
+    
+    # Add handlers
+    telegram_app.add_handler(CommandHandler("start", start))
+    telegram_app.add_handler(CommandHandler("help", help_command))
+    telegram_app.add_handler(CommandHandler("stop", stop_command))
+    telegram_app.add_handler(CommandHandler("status", status_command))
+    telegram_app.add_handler(CommandHandler("stats", my_stats))
+    telegram_app.add_handler(CommandHandler("buy", buy_command))
+    telegram_app.add_handler(CommandHandler("protect", protect_command))
+    telegram_app.add_handler(CommandHandler("referral", referral_command))
+    telegram_app.add_handler(CallbackQueryHandler(button_callback))
+    telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_input), group=1)
+    
+    # Initialize the bot within the new event loop
+    loop.run_until_complete(telegram_app.initialize())
+    loop.run_until_complete(telegram_app.start())
+    
+    # Set the webhook URL
+    set_webhook()
+    
+    # 3. Start background scheduler for auto-broadcast
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(lambda: asyncio.run_coroutine_threadsafe(auto_broadcast_inactive(telegram_app), loop), 'cron', hour=10, minute=0)
+    scheduler.start()
+    
+    # 4. Start the Asyncio loop in a separate background thread! (This was the missing piece)
+    threading.Thread(target=start_asyncio_loop, args=(loop,), daemon=True).start()
+    
+    # 5. Run Flask synchronously on the main thread
+    app_flask.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
