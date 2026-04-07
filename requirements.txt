@@ -1,0 +1,7 @@
+python-telegram-bot==20.7
+pymongo==4.5.0
+requests==2.31.0
+qrcode==7.4.2
+python-dotenv==1.0.0
+flask==2.3.3
+apscheduler==3.10.4
