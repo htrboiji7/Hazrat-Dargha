@@ -2,9 +2,8 @@
 """
 EPIC DUAL BOMBER – Webhook Version (GOD LEVEL VIP UI)
 ----------------------------------------------------------------
-- Full Uncut Version: Admin Panel, Background Webhook, Dummy APIs
+- Full Uncut Version: Admin Panel, Background Webhook, ALL Commands
 - Blockquotes, Box Drawing (├, └, ━), Monospace styling
-- Premium spacing and Cyber-Terminal Dashboard look
 """
 
 import os
@@ -50,40 +49,11 @@ MAX_THREADS = 15
 # ================= DUMMY APIS =================
 SMS_APIS = [
     "https://httpbin.org/post", "https://httpbin.org/status/200",
-    "https://reqres.in/api/users", "https://jsonplaceholder.typicode.com/posts",
-    "https://postman-echo.com/post", "https://webhook.site/#!/dummy-echo",
-    "https://dummyapi.io/data/v1/post", "https://api.mockable.io/api/demo",
-    "https://run.mocky.io/v3/1d0c5f4a-3b2e-4a1c-8f9d-0e1a2b3c4d5e",
-    "https://httpbin.org/delay/0", "https://httpbin.org/anything",
-    "https://httpbin.org/response-headers?free=edu", "https://httpbin.org/cookies/set?dummy=sms",
-    "https://httpbin.org/xml", "https://httpbin.org/json", "https://httpbin.org/bytes/100",
-    "https://httpbin.org/stream/1", "https://httpbin.org/redirect/1", "https://httpbin.org/status/201",
-    "https://httpbin.org/status/202", "https://httpbin.org/status/204", "https://httpbin.org/status/301",
-    "https://httpbin.org/status/302", "https://httpbin.org/status/400", "https://httpbin.org/status/401",
-    "https://httpbin.org/status/403", "https://httpbin.org/status/404", "https://httpbin.org/status/500",
-    "https://httpbin.org/status/502", "https://httpbin.org/status/503", "https://httpbin.org/get?dummy=sms",
-    "https://httpbin.org/delete", "https://httpbin.org/patch", "https://httpbin.org/put",
-    "https://reqres.in/api/register", "https://reqres.in/api/login",
-    "https://jsonplaceholder.typicode.com/albums", "https://jsonplaceholder.typicode.com/photos",
-    "https://jsonplaceholder.typicode.com/todos", "https://jsonplaceholder.typicode.com/comments",
-    "https://dummy.restapiexample.com/api/v1/create", "https://api.instantwebtools.com/v1/airlines",
-    "https://fakestoreapi.com/products", "https://dummyjson.com/products/add",
-    "https://httpbin.org/headers", "https://httpbin.org/ip", "https://httpbin.org/user-agent",
-    "https://httpbin.org/cache", "https://httpbin.org/etag/test"
+    "https://reqres.in/api/users", "https://jsonplaceholder.typicode.com/posts"
 ]
-
 CALL_APIS = [
     "https://httpbin.org/post", "https://reqres.in/api/users",
-    "https://postman-echo.com/post", "https://jsonplaceholder.typicode.com/posts",
-    "https://httpbin.org/status/200", "https://httpbin.org/anything",
-    "https://dummyapi.io/data/v1/post", "https://api.mockable.io/api/demo",
-    "https://run.mocky.io/v3/1d0c5f4a-3b2e-4a1c-8f9d-0e1a2b3c4d5e",
-    "https://httpbin.org/delay/0", "https://httpbin.org/response-headers?free=call",
-    "https://httpbin.org/status/201", "https://httpbin.org/status/202",
-    "https://httpbin.org/status/204", "https://httpbin.org/get?dummy=call",
-    "https://reqres.in/api/register", "https://fakestoreapi.com/products",
-    "https://dummyjson.com/products/add", "https://httpbin.org/headers",
-    "https://httpbin.org/ip"
+    "https://postman-echo.com/post"
 ]
 
 SMS_PAYLOAD = {"mobile": None, "otp": "123456", "action": "send_otp"}
@@ -489,7 +459,7 @@ async def bomb_engine(user_id, phone, duration_sec, speed_name, bomb_type, statu
     )
     await status_msg.edit_text(msg, parse_mode='HTML', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Return to Base", callback_data='start')]]))
 
-# --- OTHER COMMANDS UI UPGRADES ---
+# ================= REST OF THE COMMANDS (ADDED BACK!) =================
 async def my_stats(update, context):
     user_id = update.effective_user.id
     user = users.find_one({"user_id": user_id})
@@ -499,10 +469,13 @@ async def my_stats(update, context):
         f"👤 <b>Account ID:</b> <code>{user_id}</code>\n"
         f"💎 <b>Current Balance:</b> <code>{get_user_credits(user_id)}</code> Cr\n\n"
         "📈 <b>LIFETIME ACTIVITY:</b>\n"
-        f"├ 💣 <b>Attacks Launched:</b> <code>{user.get('total_bombs', 0)}</code>\n"
-        f"└ 📨 <b>Total Packets:</b> <code>{user.get('total_requests', 0)}</code>\n"
+        f"├ 💣 <b>Attacks Launched:</b> <code>{user.get('total_bombs', 0) if user else 0}</code>\n"
+        f"└ 📨 <b>Total Packets:</b> <code>{user.get('total_requests', 0) if user else 0}</code>\n"
     )
-    await update.callback_query.edit_message_text(text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='start')]]))
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='start')]]))
+    else:
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='start')]]))
 
 async def buy_command(update, context):
     keyboard = [
@@ -516,7 +489,8 @@ async def buy_command(update, context):
         "━━━━━━━━━━━━━━━━━━━━\n"
         "<blockquote>Supercharge your bot with premium credits. Select a package below:</blockquote>"
     )
-    await update.callback_query.edit_message_text(text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
+    if update.callback_query: await update.callback_query.edit_message_text(text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
+    else: await update.message.reply_text(text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def process_buy_plan(query, user_id, plan_key, context):
     plans = {'100': (50,100), '1000': (250,1000), 'lifetime': (899,0)}
@@ -544,7 +518,8 @@ async def protect_command(update, context):
         "━━━━━━━━━━━━━━━━━━━━\n"
         "<blockquote>Protect your personal number from being attacked by our botnet. Once shielded, no one can bomb you.</blockquote>"
     )
-    await update.callback_query.edit_message_text(text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
+    if update.callback_query: await update.callback_query.edit_message_text(text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
+    else: await update.message.reply_text(text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def process_protect_plan(query, user_id, plan, context):
     plans = {'30': (50,30), '180': (250,180), 'lifetime': (1000,None)}
@@ -571,7 +546,37 @@ async def auto_protect_callback(update, context):
         protect_number(phone, user_id, 30)
         await query.edit_message_text(f"✅ <b>SUCCESS:</b> <code>{phone}</code> is protected for 30 days!", parse_mode='HTML')
 
-# ================= ADMIN LOGIC (FULL & UNCUT) =================
+# THE MISSING COMMANDS ADDED BACK HERE
+async def help_command(update, context):
+    msg = (
+        "ℹ️ <b>SUPPORT TERMINAL</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "<blockquote>If you face any issues with payments, bombing stuck, or need custom scripts, contact the Administrator.</blockquote>"
+    )
+    await update.message.reply_text(msg, parse_mode='HTML')
+
+async def stop_command(update, context):
+    set_stop_flag(update.effective_user.id)
+    await update.message.reply_text("🛑 <b>ABORT SIGNAL SENT</b>\n<blockquote>Terminating all active processes...</blockquote>", parse_mode='HTML')
+
+async def status_command(update, context):
+    user_id = update.effective_user.id
+    if is_stopped(user_id): await update.message.reply_text("Bombing active, stop requested.")
+    else: await update.message.reply_text("No active bombing.")
+
+async def referral_command(update, context):
+    msg = (
+        "🔗 <b>REFER & EARN SYSTEM</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "<blockquote>Share your unique link below. You and your friend both will receive <b>free credits</b> when they join!</blockquote>\n\n"
+        f"👉 <b>Your Link:</b>\n<code>https://t.me/{BOT_USERNAME}?start=ref_{update.effective_user.id}</code>"
+    )
+    if update.callback_query:
+        await update.callback_query.edit_message_text(msg, parse_mode='HTML', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='start')]]))
+    else:
+        await update.message.reply_text(msg, parse_mode='HTML')
+
+# ================= ADMIN LOGIC =================
 async def admin_panel(update, context):
     if update.effective_user.id not in ADMIN_IDS: return
     query = update.callback_query
@@ -839,13 +844,17 @@ if __name__ == "__main__":
     loop = asyncio.new_event_loop()
     
     telegram_app = Application.builder().token(BOT_TOKEN).build()
+    
+    # ALL COMMANDS ADDED BACK HERE
     telegram_app.add_handler(CommandHandler("start", start))
     telegram_app.add_handler(CommandHandler("help", help_command))
     telegram_app.add_handler(CommandHandler("stop", stop_command))
+    telegram_app.add_handler(CommandHandler("status", status_command))
     telegram_app.add_handler(CommandHandler("stats", my_stats))
     telegram_app.add_handler(CommandHandler("buy", buy_command))
     telegram_app.add_handler(CommandHandler("protect", protect_command))
     telegram_app.add_handler(CommandHandler("referral", referral_command))
+    
     telegram_app.add_handler(CallbackQueryHandler(button_callback))
     telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_input), group=1)
