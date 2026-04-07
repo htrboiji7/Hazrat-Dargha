@@ -804,6 +804,82 @@ async def handle_admin_input(update, context):
     else:
         await update.message.reply_text("No pending action")
 
+# ================= BUTTON CALLBACK (THE MISSING PIECE) =================
+async def button_callback(update, context):
+    query = update.callback_query
+    data = query.data
+    await query.answer()
+    if data == 'verify_force':
+        missing = await get_missing_channels(update, context)
+        if missing:
+            await query.answer("Join all channels first!", show_alert=True)
+        else:
+            await query.answer("Verified!")
+            await show_main_menu(update, context)
+    elif data == 'start':
+        await show_main_menu(update, context)
+    elif data == 'sms_bomb':
+        await bomb_start(update, context, 'sms')
+    elif data == 'call_bomb':
+        await bomb_start(update, context, 'call')
+    elif data == 'protect':
+        await protect_command(update, context)
+    elif data == 'stats':
+        await my_stats(update, context)
+    elif data == 'buy':
+        await buy_command(update, context)
+    elif data == 'referral':
+        await referral_command(update, context)
+    elif data == 'help':
+        await help_command(update, context)
+    elif data == 'stop_self':
+        set_stop_flag(update.effective_user.id)
+        await query.edit_message_text("🛑 Stop signal sent.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu", callback_data='start')]]))
+    elif data.startswith('stop_'):
+        uid = int(data.split('_')[1])
+        if uid == update.effective_user.id:
+            set_stop_flag(uid)
+            await query.answer("Stop sent!", show_alert=True)
+    elif data.startswith('dur_'):
+        await duration_callback(update, context)
+    elif data.startswith('speed_'):
+        await speed_callback(update, context)
+    elif data.startswith('protect_'):
+        await process_protect_plan(query, update.effective_user.id, data.split('_')[1], context)
+    elif data.startswith('buy_'):
+        await process_buy_plan(query, update.effective_user.id, data.split('_')[1], context)
+    elif data.startswith('auto_protect_'):
+        await auto_protect_callback(update, context)
+    elif data == 'admin' and update.effective_user.id in ADMIN_IDS:
+        await admin_panel(update, context)
+    elif data == 'admin_stats' and update.effective_user.id in ADMIN_IDS:
+        await admin_stats_cmd(update, context)
+    elif data == 'admin_add' and update.effective_user.id in ADMIN_IDS:
+        await admin_add_credits(update, context)
+    elif data == 'admin_ban' and update.effective_user.id in ADMIN_IDS:
+        await admin_ban(update, context)
+    elif data == 'admin_unban' and update.effective_user.id in ADMIN_IDS:
+        await admin_unban(update, context)
+    elif data == 'admin_broadcast' and update.effective_user.id in ADMIN_IDS:
+        await admin_broadcast(update, context)
+    elif data == 'admin_verify' and update.effective_user.id in ADMIN_IDS:
+        await admin_verify(update, context)
+    elif data == 'admin_export' and update.effective_user.id in ADMIN_IDS:
+        await admin_export_logs(update, context)
+    else:
+        await query.edit_message_text("Unknown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Menu", callback_data='start')]]))
+
+# ================= AUTO-BROADCAST SCHEDULER =================
+async def auto_broadcast_inactive(app: Application):
+    inactive_users = get_inactive_users(days=7)
+    for uid in inactive_users:
+        try:
+            await app.bot.send_message(uid, "📢 *You haven't used the bomber in 7 days!*\nCome back and enjoy free bombing. Use /start to get daily bonus.", parse_mode='Markdown')
+            await asyncio.sleep(0.5)
+        except:
+            pass
+    logging.info(f"Auto-broadcast sent to {len(inactive_users)} inactive users.")
+
 # ================= FLASK WEBHOOK APP =================
 app_flask = Flask(__name__)
 telegram_app = None
@@ -932,7 +1008,7 @@ if __name__ == "__main__":
     scheduler.add_job(lambda: asyncio.run_coroutine_threadsafe(auto_broadcast_inactive(telegram_app), loop), 'cron', hour=10, minute=0)
     scheduler.start()
     
-    # 4. Start the Asyncio loop in a separate background thread! (This was the missing piece)
+    # 4. Start the Asyncio loop in a separate background thread!
     threading.Thread(target=start_asyncio_loop, args=(loop,), daemon=True).start()
     
     # 5. Run Flask synchronously on the main thread
